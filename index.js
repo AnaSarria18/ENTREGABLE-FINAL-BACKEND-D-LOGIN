@@ -6,23 +6,17 @@ const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
 const cors = require('cors');
 require('dotenv').config();
-
 const app = express();
-
-// Middleware
 app.use(cors());
 app.use(express.json());
 
-// Conexión a MongoDB
-mongoose
-  .connect(process.env.MONGO_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-  })
-  .then(() => console.log('MongoDB conectado'))
-  .catch((err) => console.error('Error conectando a MongoDB:', err));
 
-// Middleware de autenticación
+mongoose.connect('mongodb+srv://Muriel:123454321@cluster0.evyojh5.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0')
+  .then(() => console.log('CONECTADO A MONGO'))
+  .catch(err => console.error('Error al conectar a MongoDB:', err.message));
+
+
+8// AUTENTICACION
 const authenticateToken = (req, res, next) => {
   const token = req.headers.authorization?.split(" ")[1];
   if (!token) {
@@ -37,13 +31,13 @@ const authenticateToken = (req, res, next) => {
   }
 };
 
-// Registro de usuario
+
+// RESGISTER
 app.post('/api/register', async (req, res) => {
   const { nombre, apellido, correo, contraseña } = req.body;
   try {
-    const hashedPassword = await bcrypt.hash(contraseña, 10);
-    const user = new User({ nombre, apellido, correo, contraseña: hashedPassword });
-    await user.save();
+    const user = new User({ nombre, apellido, correo, contraseña }); // Contraseña sin hashear
+    await user.save(); // El middleware la hashea automáticamente
     res.status(201).json({ message: 'Usuario registrado con éxito' });
   } catch (err) {
     if (err.code === 11000) {
@@ -54,7 +48,8 @@ app.post('/api/register', async (req, res) => {
   }
 });
 
-// Inicio de sesión
+
+// LOGIN
 app.post('/api/login', async (req, res) => {
   const { correo, contraseña } = req.body;
 
@@ -64,13 +59,16 @@ app.post('/api/login', async (req, res) => {
       return res.status(401).json({ error: 'Credenciales inválidas' });
     }
 
-    // Verificar la contraseña usando el método comparePassword
+    console.log("Contraseña ingresada:", contraseña);
+    console.log("Contraseña almacenada:", user.contraseña);
+
     const isMatch = await user.comparePassword(contraseña);
+    console.log("¿Las contraseñas coinciden?", isMatch);
+
     if (!isMatch) {
       return res.status(401).json({ error: 'Credenciales inválidas' });
     }
 
-    // Si las credenciales son válidas, puedes generar un token o realizar otras acciones
     const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
     res.json({ message: 'Inicio de sesión exitoso', token });
   } catch (error) {
@@ -78,7 +76,9 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
-// Ruta protegida para obtener usuarios
+
+
+// OBTENER USERS CON TOKEN
 app.get('/api/users', authenticateToken, async (req, res) => {
   try {
     const users = await User.find();
@@ -93,6 +93,40 @@ app.get('/api/users', authenticateToken, async (req, res) => {
 });
 
 
+// EDITAR USER
+app.put('/api/users/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  const { nombre, correo } = req.body; // CAMPOS EDITABLES
+  try {
+    const user = await User.findByIdAndUpdate(id, { nombre, correo }, { new: true });
+    if (!user) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+    res.json({ message: 'Usuario actualizado con éxito', user });
+  } catch (error) {
+    res.status(500).json({ error: 'Error al actualizar el usuario', details: error.message });
+  }
+});
+
++
+
+// ELIMINAR USER
+app.delete('/api/users/:id', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const user = await User.findByIdAndDelete(id);
+    if (!user) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+    res.json({ message: 'Usuario eliminado con éxito' });
+  } catch (error) {
+    res.status(500).json({ error: 'Error al eliminar el usuario', details: error.message });
+  }
+});
+
+
+
+// RECUPERAR CONTRASEÑA
 app.post('/api/recover-password', async (req, res) => {
   const { correo } = req.body;
   try {
@@ -101,10 +135,10 @@ app.post('/api/recover-password', async (req, res) => {
       return res.status(404).json({ error: 'Usuario no encontrado' });
     }
 
-    // Generar un token de recuperación
+    // GENERA TOKEN DE RECUPERACION
     const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
 
-    // Enviar correo electrónico
+    // SEND EMAIL
     const transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: {
@@ -118,7 +152,7 @@ app.post('/api/recover-password', async (req, res) => {
       to: correo,
       subject: 'Recuperación de contraseña',
       text: `Para restablecer tu contraseña, haz clic en el siguiente enlace: 
-http://localhost:3000/reset-password/${token}`,
+      http://localhost:4000/reset-password/${token}`,
 
     };
 
@@ -129,22 +163,25 @@ http://localhost:3000/reset-password/${token}`,
   }
 });
 
+
+
+// CODIGO RECOVERY
 app.post('/api/reset-password/:token', async (req, res) => {
   const { token } = req.params;
   const { nuevaContraseña } = req.body;
   try {
-    // Verificar token
+    
+    // VERIFY TOKEN
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    // Buscar usuario por ID
+    // USER ID
     const user = await User.findById(decoded.id);
     if (!user) {
       return res.status(404).json({ error: 'Usuario no encontrado' });
     }
-    // Asignar nueva contraseña (sin hashearla aquí)
     user.contraseña = nuevaContraseña;
 
-    // Guardar usuario (el middleware se encargará de hashearla)
+    // SAVE USER
     await user.save();
     res.json({ message: 'Contraseña restablecida con éxito' });
   } catch (error) {
@@ -153,47 +190,5 @@ app.post('/api/reset-password/:token', async (req, res) => {
 });
 
 
-// Ruta para editar el usuario
-app.put('/api/users/:id', async (req, res) => {
-  const { id } = req.params;
-  const { nombre } = req.body;
-
-  try {
-    const user = await User.findById(id);
-    if (!user) {
-      return res.status(404).json({ error: "Usuario no encontrado" });
-    }
-
-    user.nombre = nombre; // Actualiza el nombre
-    await user.save(); // Guarda el usuario actualizado
-
-    res.status(200).json(user); // Devuelve el usuario actualizado
-  } catch (error) {
-    console.error("Error al actualizar usuario:", error);
-    res.status(500).json({ error: "Error al actualizar el usuario" });
-  }
-});
-
-
-
-// Ruta para eliminar el suaurio
-app.delete("/api/users/:id", async (req, res) => {
-  const { id } = req.params;
-
-  try {
-    const user = await User.findByIdAndDelete(id);
-    if (!user) {
-      return res.status(404).json({ error: "Usuario no encontrado" });
-    }
-
-    res.status(200).json({ message: "Usuario eliminado con éxito" });
-  } catch (error) {
-    res.status(500).json({ error: "Error al eliminar el usuario" });
-  }
-});
-
-
-
-// Iniciar servidor
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => console.log(`Servidor corriendo en http://localhost:${PORT}`));
