@@ -11,12 +11,17 @@ app.use(cors());
 app.use(express.json());
 
 
-mongoose.connect('mongodb+srv://Muriel:123454321@cluster0.evyojh5.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0')
-  .then(() => console.log('CONECTADO A MONGO'))
-  .catch(err => console.error('Error al conectar a MongoDB:', err.message));
+// Conexión a MongoDB
+mongoose
+  .connect(process.env.MONGO_URI, {
+    useNewUrlParser: true,
+    useUnifiedTopology: true,
+  })
+  .then(() => console.log('MongoDB conectado'))
+  .catch((err) => console.error('Error conectando a MongoDB:', err));
 
-
-8// AUTENTICACION
+  
+8// atenticar
 const authenticateToken = (req, res, next) => {
   const token = req.headers.authorization?.split(" ")[1];
   if (!token) {
@@ -32,12 +37,12 @@ const authenticateToken = (req, res, next) => {
 };
 
 
-// RESGISTER
+// Registrar
 app.post('/api/register', async (req, res) => {
   const { nombre, apellido, correo, contraseña } = req.body;
   try {
-    const user = new User({ nombre, apellido, correo, contraseña }); // Contraseña sin hashear
-    await user.save(); // El middleware la hashea automáticamente
+    const user = new User({ nombre, apellido, correo, contraseña }); 
+    await user.save(); 
     res.status(201).json({ message: 'Usuario registrado con éxito' });
   } catch (err) {
     if (err.code === 11000) {
@@ -49,7 +54,7 @@ app.post('/api/register', async (req, res) => {
 });
 
 
-// LOGIN
+// login
 app.post('/api/login', async (req, res) => {
   const { correo, contraseña } = req.body;
 
@@ -78,7 +83,7 @@ app.post('/api/login', async (req, res) => {
 
 
 
-// OBTENER USERS CON TOKEN
+// obtener tokens
 app.get('/api/users', authenticateToken, async (req, res) => {
   try {
     const users = await User.find();
@@ -93,10 +98,10 @@ app.get('/api/users', authenticateToken, async (req, res) => {
 });
 
 
-// EDITAR USER
+// editar usuario
 app.put('/api/users/:id', authenticateToken, async (req, res) => {
   const { id } = req.params;
-  const { nombre, correo } = req.body; // CAMPOS EDITABLES
+  const { nombre, correo } = req.body; 
   try {
     const user = await User.findByIdAndUpdate(id, { nombre, correo }, { new: true });
     if (!user) {
@@ -110,7 +115,7 @@ app.put('/api/users/:id', authenticateToken, async (req, res) => {
 
 +
 
-// ELIMINAR USER
+// eliminar usuario
 app.delete('/api/users/:id', authenticateToken, async (req, res) => {
   const { id } = req.params;
   try {
@@ -126,7 +131,7 @@ app.delete('/api/users/:id', authenticateToken, async (req, res) => {
 
 
 
-// RECUPERAR CONTRASEÑA
+// poder recuperar la contraseña 
 app.post('/api/recover-password', async (req, res) => {
   const { correo } = req.body;
   try {
@@ -135,10 +140,10 @@ app.post('/api/recover-password', async (req, res) => {
       return res.status(404).json({ error: 'Usuario no encontrado' });
     }
 
-    // GENERA TOKEN DE RECUPERACION
+    // generar tokens de recuperar 
     const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
 
-    // SEND EMAIL
+    // email sen
     const transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: {
@@ -164,24 +169,22 @@ app.post('/api/recover-password', async (req, res) => {
 });
 
 
-
-// CODIGO RECOVERY
+// codigo recor
 app.post('/api/reset-password/:token', async (req, res) => {
   const { token } = req.params;
   const { nuevaContraseña } = req.body;
   try {
     
-    // VERIFY TOKEN
+    // verificar tokens
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    // USER ID
+    // id usuario
     const user = await User.findById(decoded.id);
     if (!user) {
       return res.status(404).json({ error: 'Usuario no encontrado' });
     }
     user.contraseña = nuevaContraseña;
 
-    // SAVE USER
     await user.save();
     res.json({ message: 'Contraseña restablecida con éxito' });
   } catch (error) {
@@ -189,6 +192,6 @@ app.post('/api/reset-password/:token', async (req, res) => {
   }
 });
 
-
+//
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => console.log(`Servidor corriendo en http://localhost:${PORT}`));
